@@ -22,11 +22,11 @@ const brokers = [
   {
     id: 2,
     name: "Cedalo",
-    server: "pf-26xt4cmufmfw6kr1zpyq.cedalo.cloud",
+    server: "pf-ja6x4lxt1nt3206ohn7w.cedalo.cloud",
     port: 8883,
-    user: "Esp2",
-    pass: "d",
-    clientIdPrefix: "WebProxy_Cedalo"
+    user: "Esp1",
+    pass: "a",
+    clientIdPrefix: "EspClient"
   },
   {
     id: 3,
@@ -88,6 +88,7 @@ function connectBroker(index: number) {
   if (mqttClient) {
     const oldName = state.brokerIndex >= 0 && brokers[state.brokerIndex] ? brokers[state.brokerIndex].name : 'Unknown';
     addLog(`Memutuskan koneksi dari broker lama [${oldName}]...`);
+    
     mqttClient.end(true);
     mqttClient = null;
   }
@@ -101,42 +102,74 @@ function connectBroker(index: number) {
   broadcastState();
 
   const brokerUrl = `mqtts://${b.server}:${b.port}`;
-  const options = {
-    username: b.user || undefined,
-    password: b.pass || undefined,
-    clientId: `${b.clientIdPrefix}_Server_${Math.random().toString(36).substring(2, 7)}`,
-    rejectUnauthorized: false, // matches setInsecure() in ESP32
+  
+  // Opsi koneksi yang dioptimasi untuk berbagai broker (SNI, limit clientId, MQTT 3.1.1)
+  const options: mqtt.IClientOptions = {
+    username: b.user !== "" ? b.user : undefined,
+    password: b.pass !== "" ? b.pass : undefined,
+    clientId: `${b.clientIdPrefix}_${Math.random().toString(36).substring(2, 6)}`,
+    rejectUnauthorized: false,
+    servername: b.server, // Penting untuk broker berbasis cloud seperti Cedalo & Flespi (SNI)
     connectTimeout: 8000,
     reconnectPeriod: 5000,
+    protocolVersion: 4, // Setara dengan PubSubClient ESP32 (MQTT 3.1.1)
+    clean: true,
   };
 
-  addLog(`[System] Menghubungkan ke ${b.name} (${b.server}:${b.port})`);
+  addLog(`[System] Menghubungkan ke ${b.name} (${b.server}:${b.port})...`);
 
   try {
     mqttClient = mqtt.connect(brokerUrl, options);
 
     mqttClient.on("connect", () => {
+      
       state.connectionStatus = "connected";
       state.statusBrokerMsg = `Broker aktif: ${b.name} (${b.server})`;
       addLog(`[MQTT] Terhubung secara aman ke [${b.name}]!`);
 
-      // Subscribe to all telemetry and command feedbacks
+      // Subscribe to all telemetry and command feedbacks using QoS 0
       if (mqttClient) {
-        mqttClient.subscribe("sensor/suhu", { qos: 1 });
-        mqttClient.subscribe("sensor/kelembaban", { qos: 1 });
-        mqttClient.subscribe("status/broker", { qos: 1 });
-        mqttClient.subscribe("kontrol/relay1", { qos: 1 });
-        mqttClient.subscribe("kontrol/relay2", { qos: 1 });
-        mqttClient.subscribe("kontrol/relay3", { qos: 1 });
-        mqttClient.subscribe("kontrol/relay4", { qos: 1 });
-        mqttClient.subscribe("kontrol/variasi1", { qos: 1 });
-        mqttClient.subscribe("kontrol/variasi2", { qos: 1 });
-        mqttClient.subscribe("kontrol/broker", { qos: 1 });
+        const topics = [
+          "sensor/suhu", "sensor/kelembaban", "status/broker",
+          "kontrol/relay1", "kontrol/relay2", "kontrol/relay3", "kontrol/relay4",
+          "kontrol/variasi1", "kontrol/variasi2", "kontrol/broker"
+        ];
+        topics.forEach(t => mqttClient!.subscribe(t, { qos: 0 }));
+
+        // Sinkronisasi status web app ke ESP32 (Push State)
+        setTimeout(() => {
+          if (mqttClient && mqttClient.connected) {
+            addLog(`[System Sync] Mengirim status saat ini ke ESP32 agar sinkron...`);
+            mqttClient.publish("kontrol/relay1", state.relays[0] ? "ON" : "OFF", { qos: 0 });
+            mqttClient.publish("kontrol/relay2", state.relays[1] ? "ON" : "OFF", { qos: 0 });
+            mqttClient.publish("kontrol/relay3", state.relays[2] ? "ON" : "OFF", { qos: 0 });
+            mqttClient.publish("kontrol/relay4", state.relays[3] ? "ON" : "OFF", { qos: 0 });
+            if (state.variasi1) mqttClient.publish("kontrol/variasi1", "START", { qos: 0 });
+            if (state.variasi2) mqttClient.publish("kontrol/variasi2", "START", { qos: 0 });
+          }
+        }, 2500); // Tunggu sebentar agar ESP32 yang pindah broker sudah men-subscribe topik
       }
       broadcastState();
     });
 
+    mqttClient.on("offline", () => {
+      if (state.connectionStatus === "connected" || state.connectionStatus === "connecting") {
+        addLog(`[MQTT] Koneksi ke ${b.name} terputus (offline).`);
+        state.connectionStatus = "connecting";
+        state.statusBrokerMsg = `Menunggu koneksi ke ${b.name}...`;
+        broadcastState();
+      }
+    });
+
+    mqttClient.on("error", (err) => {
+      addLog(`[MQTT Error] Broker ${b.name} menolak koneksi: ${err.message}`);
+      state.connectionStatus = "error";
+      state.statusBrokerMsg = `Gagal terhubung ke ${b.name} (${err.message})`;
+      broadcastState();
+    });
+
     mqttClient.on("message", (topic, payload) => {
+
       const msg = payload.toString().trim();
       let stateChanged = false;
 
@@ -271,14 +304,18 @@ app.post("/api/control/broker", (req, res) => {
 
   // Publish target broker instruction on the current broker so ESP32 knows
   if (mqttClient && mqttClient.connected) {
-    mqttClient.publish("kontrol/broker", brokerNum, { qos: 1 });
-    addLog(`[MQTT Publish] kontrol/broker -> "${brokerNum}"`);
+    mqttClient.publish("kontrol/broker", brokerNum, { qos: 0 }, (err) => {
+      if (err) addLog(`[MQTT Error] Gagal kirim pindah broker ke ESP32: ${err.message}`);
+      else addLog(`[MQTT Publish] kontrol/broker -> "${brokerNum}" (Kirim instruksi ke perangkat)`);
+    });
+  } else {
+    addLog(`[MQTT Peringatan] Tidak dapat mengirim instruksi pindah ke ESP32 (Broker saat ini offline).`);
   }
 
   // Brief timeout to let ESP receive and process before server disconnects
   setTimeout(() => {
     connectBroker(index);
-  }, 1200);
+  }, 1500);
 
   res.json({ success: true, message: `Instruksi pindah broker dikirim ke ${brokers[index].name}` });
 });
@@ -311,7 +348,12 @@ app.post("/api/control/relay", (req, res) => {
   addLog(`[Relay Control] Relay ${index + 1} -> ${targetState}`);
 
   if (mqttClient && mqttClient.connected) {
-    mqttClient.publish(topic, targetState, { qos: 1 });
+    mqttClient.publish(topic, targetState, { qos: 0 }, (err) => {
+      if (err) addLog(`[MQTT Error] Gagal kirim relay: ${err.message}`);
+      else addLog(`[MQTT Transmit] ${topic} -> ${targetState}`);
+    });
+  } else {
+    addLog(`[MQTT Error] Gagal mengendalikan relay, tidak terhubung ke broker.`);
   }
 
   // Update locally immediately for high-responsive interaction
@@ -332,7 +374,12 @@ app.post("/api/control/variasi", (req, res) => {
   addLog(`[Sequence Control] Variasi ${index} -> ${targetState}`);
 
   if (mqttClient && mqttClient.connected) {
-    mqttClient.publish(topic, targetState, { qos: 1 });
+    mqttClient.publish(topic, targetState, { qos: 0 }, (err) => {
+      if (err) addLog(`[MQTT Error] Gagal kirim instruksi variasi: ${err.message}`);
+      else addLog(`[MQTT Transmit] ${topic} -> ${targetState}`);
+    });
+  } else {
+    addLog(`[MQTT Error] Gagal menjalankan variasi, tidak terhubung ke broker.`);
   }
 
   // Update local states

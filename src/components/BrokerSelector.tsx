@@ -20,10 +20,10 @@ const BROKERS = [
   },
   {
     name: "Cedalo",
-    url: "pf-26xt4cmufmfw6kr...cedalo.cloud",
+    url: "pf-ja6x4lxt1n...cedalo.cloud",
     port: 8883,
     tls: "TLS/SSL (Secure)",
-    username: "Esp2",
+    username: "Esp1",
     desc: "Broker Eclipse Mosquitto modern dengan arsitektur latency ultra kecil."
   },
   {
