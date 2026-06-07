@@ -86,12 +86,15 @@ function connectBroker(index: number) {
 
   // Stop previous connection
   if (mqttClient) {
-    addLog(`Memutuskan koneksi dari broker lama [${brokers[state.brokerIndex].name}]...`);
+    const oldName = state.brokerIndex >= 0 && brokers[state.brokerIndex] ? brokers[state.brokerIndex].name : 'Unknown';
+    addLog(`Memutuskan koneksi dari broker lama [${oldName}]...`);
     mqttClient.end(true);
     mqttClient = null;
   }
 
   state.brokerIndex = index;
+  if (index === -1) return; // Allow programmatic disconnect by passing -1
+
   const b = brokers[index];
   state.connectionStatus = "connecting";
   state.statusBrokerMsg = `Connecting to ${b.name}...`;
@@ -278,6 +281,23 @@ app.post("/api/control/broker", (req, res) => {
   }, 1200);
 
   res.json({ success: true, message: `Instruksi pindah broker dikirim ke ${brokers[index].name}` });
+});
+
+// Disconnect broker
+app.post("/api/control/disconnect", (req, res) => {
+  addLog(`[Broker Control] Kirim perintah pemutusan koneksi (Disconnect).`);
+  
+  if (mqttClient) {
+    mqttClient.end(true);
+    mqttClient = null;
+  }
+  
+  state.brokerIndex = -1;
+  state.connectionStatus = "disconnected";
+  state.statusBrokerMsg = "Broker MQTT terputus (Manual)";
+  broadcastState();
+  
+  res.json({ success: true, message: "Koneksi broker berhasil diputus" });
 });
 
 // Control relays

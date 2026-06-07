@@ -9,6 +9,7 @@ interface VoiceControllerProps {
   onToggleRelay: (index: number, state: "ON" | "OFF") => void;
   onToggleVariasi: (index: number, state: "START" | "STOP") => void;
   onSwitchBroker: (index: number) => void;
+  onDisconnectBroker: () => void;
 }
 
 export default function VoiceController({
@@ -18,7 +19,8 @@ export default function VoiceController({
   brokerIndex,
   onToggleRelay,
   onToggleVariasi,
-  onSwitchBroker
+  onSwitchBroker,
+  onDisconnectBroker
 }: VoiceControllerProps) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -32,7 +34,8 @@ export default function VoiceController({
     { text: '"Matikan semua relay"', desc: 'Menonaktifkan semua perangkat beban' },
     { text: '"Sebutkan kondisi suhu"', desc: 'Asisten menyuarakan data sensor DHT11' },
     { text: '"Mulai variasi 1"', desc: 'Menjalankan sekuensial maju (1→2→3→4)' },
-    { text: '"Pindah ke broker dua"', desc: 'Beralih ke broker Cedalo secara otomatis' }
+    { text: '"Pindah ke broker dua"', desc: 'Beralih ke broker Cedalo secara otomatis' },
+    { text: '"Putus koneksi broker"', desc: 'Mematikan koneksi ke MQTT secara manual' }
   ];
 
   // Initialize Speech Recognition
@@ -224,6 +227,12 @@ export default function VoiceController({
     }
 
     // 4. Broker Switch Commands
+    if (textClean.includes("putus koneksi broker") || textClean.includes("putus koneksi") || textClean.includes("disconnect broker")) {
+      onDisconnectBroker();
+      speakText("Memutuskan koneksi dari broker secara manual.");
+      return;
+    }
+    
     if (textClean.includes("pindah") && (textClean.includes("broker 1") || textClean.includes("broker satu") || textClean.includes("cloudamqp") || textClean.includes("cloud amqp"))) {
       onSwitchBroker(0);
       speakText("Memproses perpindahan koneksi ke Broker Satu Cloud AMQP.");

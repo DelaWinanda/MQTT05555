@@ -112,6 +112,15 @@ export default function App() {
     }
   };
 
+  const handleDisconnectBroker = async () => {
+    try {
+      const response = await fetch("/api/control/disconnect", { method: "POST" });
+      if (!response.ok) throw new Error("Gagal memutus koneksi broker");
+    } catch (err) {
+      console.error("Error memutus koneksi broker:", err);
+    }
+  };
+
   const handleToggleSimulation = async () => {
     try {
       const response = await fetch("/api/control/simulation", {
@@ -199,6 +208,7 @@ export default function App() {
                 onToggleRelay={handleToggleRelay}
                 onToggleVariasi={handleToggleVariasi}
                 onSwitchBroker={handleSwitchBroker}
+                onDisconnectBroker={handleDisconnectBroker}
               />
             </div>
           </div>
@@ -210,6 +220,7 @@ export default function App() {
               connectionStatus={state.connectionStatus}
               statusBrokerMsg={state.statusBrokerMsg}
               onSwitchBroker={handleSwitchBroker}
+              onDisconnectBroker={handleDisconnectBroker}
             />
           </section>
 

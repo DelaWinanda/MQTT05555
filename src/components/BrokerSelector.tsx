@@ -6,6 +6,7 @@ interface BrokerSelectorProps {
   connectionStatus: "disconnected" | "connecting" | "connected" | "error";
   statusBrokerMsg: string;
   onSwitchBroker: (index: number) => void;
+  onDisconnectBroker: () => void;
 }
 
 const BROKERS = [
@@ -39,7 +40,8 @@ export default function BrokerSelector({
   brokerIndex, 
   connectionStatus, 
   statusBrokerMsg, 
-  onSwitchBroker 
+  onSwitchBroker,
+  onDisconnectBroker
 }: BrokerSelectorProps) {
 
   // Color mappings
@@ -76,8 +78,17 @@ export default function BrokerSelector({
           </p>
         </div>
 
-        {/* Global Connection Status Badge */}
+        {/* Global Connection Status Badge & Disconnect */}
         <div className="flex items-center gap-2 self-start sm:self-center">
+          {connectionStatus === "connected" && (
+            <button
+              onClick={onDisconnectBroker}
+              title="Putus Koneksi Broker Server"
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 transition-all cursor-pointer font-mono"
+            >
+              DISCONNECT
+            </button>
+          )}
           <span 
             className={`text-xs font-bold font-mono px-3 py-1.5 rounded-full border flex items-center gap-1.5 shadow-sm ${statusColors[connectionStatus]}`}
           >
