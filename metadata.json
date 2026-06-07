@@ -1,0 +1,6 @@
+{
+  "name": "ESP32 IoT Dashboard",
+  "description": "Interactive Web Interface and Voice Controller for ESP32 with DHT11, 4 Relays, and Multi-Broker MQTT switching.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
